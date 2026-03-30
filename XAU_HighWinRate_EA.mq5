@@ -37,11 +37,13 @@ input int    InpFridayCutoffHour         = 18;
 //============================================================
 input group "Signal Engine"
 input int    InpSweepLookbackBars        = 24;
-input double InpWickToBodyMinRatio       = 1.2;
-input double InpMinBodyAtrFraction       = 0.25;
+input double InpWickToBodyMinRatio       = 0.8;
+input double InpMinBodyAtrFraction       = 0.10;
 input bool   InpUseEmaFilter             = true;
-input bool   InpUseAdxFilter             = true;
-input bool   InpUseHTFConfirm            = true;
+input bool   InpUseAdxFilter             = false;
+input bool   InpUseHTFConfirm            = false;
+input bool   InpEnableTrendPullbackSignal= true;
+input int    InpSignalScoreThreshold     = 55;
 
 //============================================================
 // Inputs: Indicator Settings
@@ -52,7 +54,7 @@ input int    InpEmaFastPeriod            = 34;
 input int    InpEmaSlowPeriod            = 89;
 input int    InpAdxPeriod                = 14;
 input int    InpHtfEmaPeriod             = 50;
-input double InpAtrMinPoints             = 90.0;
+input double InpAtrMinPoints             = 45.0;
 input double InpAtrMaxPoints             = 1200.0;
 input double InpAdxMin                   = 18.0;
 input double InpAdxMax                   = 42.0;
@@ -61,7 +63,7 @@ input double InpAdxMax                   = 42.0;
 // Inputs: Order Sizing & SL/TP
 //============================================================
 input group "Risk Per Trade"
-input double InpBaseLot                  = 0.05;
+input double InpBaseLot                  = 0.08;
 input double InpRiskScaleAfterLoss       = 0.70;
 input int    InpReduceRiskAfterLosses    = 2;
 input double InpSL_AtrMult               = 1.6;
@@ -74,9 +76,9 @@ input double InpBE_LockAtr               = 0.1;
 // Inputs: Basket Controls
 //============================================================
 input group "Basket Control"
-input double InpBasketTargetMoney        = 60.0;
-input double InpBasketMaxLossMoney       = 90.0;
-input int    InpBasketTimeoutBars        = 60;
+input double InpBasketTargetMoney        = 35.0;
+input double InpBasketMaxLossMoney       = 65.0;
+input int    InpBasketTimeoutBars        = 30;
 input bool   InpCloseOnOppositeSignal    = true;
 
 //============================================================
@@ -84,7 +86,7 @@ input bool   InpCloseOnOppositeSignal    = true;
 //============================================================
 input group "Corrector"
 input bool   InpEnableCorrector          = true;
-input double InpCorrectorTriggerAtr      = 1.1;
+input double InpCorrectorTriggerAtr      = 0.8;
 input double InpCorrectorLotMultiplier   = 1.0;
 input double InpCorrectorSL_AtrMult      = 1.0;
 input double InpCorrectorTP_AtrMult      = 0.8;
@@ -95,7 +97,7 @@ input double InpCorrectorTP_AtrMult      = 0.8;
 input group "Global Risk"
 input bool   InpEnableDailyLossStop      = true;
 input double InpMaxDailyLossPct          = 3.0;
-input int    InpMaxConsecutiveLosses     = 4;
+input int    InpMaxConsecutiveLosses     = 6;
 input bool   InpPauseAfterDrawdown       = true;
 input double InpPauseDrawdownPct         = 8.0;
 
@@ -251,8 +253,8 @@ void EvaluateCorrector(const BasketSnapshot &snap)
 
    SignalDecision s;
    if(!g_signal.BuildEntrySignal(InpSweepLookbackBars,InpWickToBodyMinRatio,InpMinBodyAtrFraction,
-                                 InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,
-                                 InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,s))
+                                 InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,InpEnableTrendPullbackSignal,
+                                 InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,InpSignalScoreThreshold,s))
       return;
 
    bool oppositeStrong=((originalType==POSITION_TYPE_BUY && s.direction==SIGNAL_SELL) ||
@@ -311,8 +313,8 @@ void ManageOpenBasket(void)
      {
       SignalDecision s;
       if(g_signal.BuildEntrySignal(InpSweepLookbackBars,InpWickToBodyMinRatio,InpMinBodyAtrFraction,
-                                   InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,
-                                   InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,s))
+                                   InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,InpEnableTrendPullbackSignal,
+                                   InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,InpSignalScoreThreshold,s))
         {
          bool opposite=(snap.originalType==POSITION_TYPE_BUY && s.direction==SIGNAL_SELL) ||
                        (snap.originalType==POSITION_TYPE_SELL && s.direction==SIGNAL_BUY);
@@ -391,8 +393,8 @@ void TryOpenOriginal(void)
 
    SignalDecision s;
    if(!g_signal.BuildEntrySignal(InpSweepLookbackBars,InpWickToBodyMinRatio,InpMinBodyAtrFraction,
-                                 InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,
-                                 InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,s))
+                                 InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,InpEnableTrendPullbackSignal,
+                                 InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,InpSignalScoreThreshold,s))
      {
       g_logger.Debug("ENTRY","Signal error: "+s.reason);
       return;

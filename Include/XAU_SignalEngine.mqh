@@ -36,10 +36,12 @@ public:
                                       const bool useTrend,
                                       const bool useAdx,
                                       const bool useHtf,
+                                      const bool enableTrendPullback,
                                       const double adxMin,
                                       const double adxMax,
                                       const double atrMinPts,
                                       const double atrMaxPts,
+                                      const int scoreThreshold,
                                       SignalDecision &out)
      {
       out.Reset();
@@ -134,22 +136,51 @@ public:
          htfSell=(b.close<htfEma);
         }
 
-      if(bullSweep && bullishReject && trendBuy && htfBuy)
+      // Weighted scoring allows more trade frequency while still enforcing structure quality.
+      int buyScore=0;
+      int sellScore=0;
+
+      if(bullSweep)       buyScore+=35;
+      if(bearSweep)       sellScore+=35;
+      if(bullishReject)   buyScore+=20;
+      if(bearishReject)   sellScore+=20;
+      if(trendBuy)        buyScore+=15;
+      if(trendSell)       sellScore+=15;
+      if(htfBuy)          buyScore+=10;
+      if(htfSell)         sellScore+=10;
+      if(body>=0.20*atr)  { buyScore+=10; sellScore+=10; }
+
+      // Secondary continuation module (trend pullback entry).
+      // This module intentionally increases trade count compared to pure sweep logic.
+      if(enableTrendPullback)
+        {
+         // Pullback long: trend up, candle dips under EMA fast and closes back above it.
+         bool pullbackLong=(b.low<emaFast && b.close>emaFast && trendBuy);
+         // Pullback short: trend down, candle spikes above EMA fast and closes back below it.
+         bool pullbackShort=(b.high>emaFast && b.close<emaFast && trendSell);
+
+         if(pullbackLong)
+            buyScore+=30;
+         if(pullbackShort)
+            sellScore+=30;
+        }
+
+      if(buyScore>=scoreThreshold && buyScore>sellScore)
         {
          out.direction=SIGNAL_BUY;
-         out.reason="Bull sweep + reject + filters";
-         out.confidence=1.0;
+         out.reason="BUY score="+IntegerToString(buyScore);
+         out.confidence=(double)buyScore/100.0;
          return true;
         }
-      if(bearSweep && bearishReject && trendSell && htfSell)
+      if(sellScore>=scoreThreshold && sellScore>buyScore)
         {
          out.direction=SIGNAL_SELL;
-         out.reason="Bear sweep + reject + filters";
-         out.confidence=1.0;
+         out.reason="SELL score="+IntegerToString(sellScore);
+         out.confidence=(double)sellScore/100.0;
          return true;
         }
 
-      out.reason="No qualified sweep/rejection setup";
+      out.reason="No qualified setup score(B/S)="+IntegerToString(buyScore)+"/"+IntegerToString(sellScore);
       return true;
      }
   };
