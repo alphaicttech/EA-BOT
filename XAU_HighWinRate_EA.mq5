@@ -22,6 +22,8 @@ input ENUM_TIMEFRAMES InpHTF             = PERIOD_H1;
 input int    InpCooldownBars             = 0;
 input bool   InpAllowIntraBarEntries     = true;
 input int    InpMinSecondsBetweenEntries = 20;
+input bool   InpTesterRelaxedMode        = true;
+input int    InpTesterFallbackScore      = 40;
 
 //============================================================
 // Inputs: Sessions & Execution Filters
@@ -117,6 +119,7 @@ CStatsTracker    g_stats;
 datetime         g_lastBarTime=0;
 double           g_peakEquity=0.0;
 datetime         g_lastEntryTime=0;
+int              g_ticksProcessed=0;
 
 //============================================================
 // Utility helpers
@@ -356,6 +359,8 @@ void TryOpenOriginal(void)
    if(snap.hasBasket)
       return;
 
+   const bool testerRelax=(InpTesterRelaxedMode && (bool)MQLInfoInteger(MQL_TESTER));
+
    if(g_risk.IsDailyLocked())
      {
       g_logger.Debug("ENTRY","Blocked: daily loss lock");
@@ -375,13 +380,13 @@ void TryOpenOriginal(void)
       return;
      }
 
-   if(!g_risk.SessionAllowed(InpSessionStartHour,InpSessionEndHour,InpUseFridayCutoff,InpFridayCutoffHour))
+   if(!testerRelax && !g_risk.SessionAllowed(InpSessionStartHour,InpSessionEndHour,InpUseFridayCutoff,InpFridayCutoffHour))
      {
       g_logger.Debug("ENTRY","Blocked: session filter");
       return;
      }
 
-   if(!g_risk.SpreadAllowed(InpMaxSpreadPoints))
+   if(!testerRelax && !g_risk.SpreadAllowed(InpMaxSpreadPoints))
      {
       g_logger.Debug("ENTRY","Blocked: spread filter");
       return;
@@ -401,9 +406,13 @@ void TryOpenOriginal(void)
      }
 
    SignalDecision s;
+   int dynamicScoreThreshold=InpSignalScoreThreshold;
+   if(testerRelax)
+      dynamicScoreThreshold=MathMin(InpSignalScoreThreshold,InpTesterFallbackScore);
+
    if(!g_signal.BuildEntrySignal(InpSweepLookbackBars,InpWickToBodyMinRatio,InpMinBodyAtrFraction,
                                  InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,InpEnableTrendPullbackSignal,
-                                 InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,InpSignalScoreThreshold,s))
+                                 InpAdxMin,InpAdxMax,InpAtrMinPoints,InpAtrMaxPoints,dynamicScoreThreshold,s))
      {
       g_logger.Debug("ENTRY","Signal error: "+s.reason);
       return;
@@ -453,6 +462,7 @@ int OnInit()
 
    g_peakEquity=AccountInfoDouble(ACCOUNT_EQUITY);
    g_lastBarTime=0;
+   g_ticksProcessed=0;
 
    g_logger.Info("INIT","EA initialized successfully.");
    return(INIT_SUCCEEDED);
@@ -466,6 +476,10 @@ void OnDeinit(const int reason)
 
 void OnTick()
   {
+   g_ticksProcessed++;
+   if(g_ticksProcessed==1)
+      g_logger.Info("TICK","First tick received. EA is active in tester/live context.");
+
    g_risk.OnTickDayUpdate();
    g_risk.EvaluateDailyLossStop(InpEnableDailyLossStop,InpMaxDailyLossPct);
 
