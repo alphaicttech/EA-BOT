@@ -19,7 +19,9 @@ input long   InpMagicNumber              = 26032901;
 input bool   InpDebugLogs                = true;
 input ENUM_TIMEFRAMES InpSignalTF        = PERIOD_M5;
 input ENUM_TIMEFRAMES InpHTF             = PERIOD_H1;
-input int    InpCooldownBars             = 6;
+input int    InpCooldownBars             = 0;
+input bool   InpAllowIntraBarEntries     = true;
+input int    InpMinSecondsBetweenEntries = 20;
 
 //============================================================
 // Inputs: Sessions & Execution Filters
@@ -114,6 +116,7 @@ CStatsTracker    g_stats;
 
 datetime         g_lastBarTime=0;
 double           g_peakEquity=0.0;
+datetime         g_lastEntryTime=0;
 
 //============================================================
 // Utility helpers
@@ -391,6 +394,12 @@ void TryOpenOriginal(void)
       return;
      }
 
+   if(g_lastEntryTime>0 && (TimeCurrent()-g_lastEntryTime)<InpMinSecondsBetweenEntries)
+     {
+      g_logger.Debug("ENTRY","Blocked: min seconds between entries");
+      return;
+     }
+
    SignalDecision s;
    if(!g_signal.BuildEntrySignal(InpSweepLookbackBars,InpWickToBodyMinRatio,InpMinBodyAtrFraction,
                                  InpUseEmaFilter,InpUseAdxFilter,InpUseHTFConfirm,InpEnableTrendPullbackSignal,
@@ -417,7 +426,10 @@ void TryOpenOriginal(void)
 
    double lot=BuildRiskAdjustedLot();
    if(g_trade.OpenOriginal(ord,lot,sl,tp,s.reason))
+     {
+      g_lastEntryTime=TimeCurrent();
       g_logger.Info("ENTRY","Original opened. dir="+IntegerToString((int)s.direction)+" lot="+DoubleToString(lot,2)+" reason="+s.reason);
+     }
   }
 
 //============================================================
@@ -458,9 +470,12 @@ void OnTick()
    g_risk.EvaluateDailyLossStop(InpEnableDailyLossStop,InpMaxDailyLossPct);
 
    ManageOpenBasket();
-
-   if(!IsNewBar())
+   if(InpAllowIntraBarEntries)
+     {
+      TryOpenOriginal();
       return;
+     }
 
-   TryOpenOriginal();
+   if(IsNewBar())
+      TryOpenOriginal();
   }
